@@ -1,10 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from dotenv import load_dotenv
-import os
 from openai import OpenAI
-
 from prophet.plot import plot_plotly, plot_components_plotly
 from forecast import train_and_forecast_models
 
@@ -15,28 +12,31 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- Load API Key ---
-load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    st.error("OpenAI API key not found! Please add it to your .env file.", icon="🚨")
+# --- Load API Key from Streamlit Secrets ---
+try:
+    OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+except Exception:
+    st.error("❌ OpenAI API key not found! Please add it under 'Settings → Secrets' in Streamlit Cloud.")
     st.stop()
+
+# Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # --- Load and Train Models (Cached) ---
 DATA_FILE = 'garlic data for chat gpt2002 to 2025 (1).csv'
+
 with st.spinner('Loading data and training forecasting models up to 2035...'):
     models, forecasts = train_and_forecast_models(DATA_FILE)
 
 if models is None or forecasts is None:
     st.stop()
 
-st.success('Forecast models trained successfully up to 2035!', icon="✅")
+st.success('✅ Forecast models trained successfully up to 2035!')
 
 # --- Main App Interface ---
 st.title("🧄 Garlic Price Forecaster & AI Analyst (2023-2035)")
 st.markdown("Forecast garlic prices for the Gondal market from 2023 to 2035 and get AI-powered insights.")
-st.warning("Long-term forecasts carry higher uncertainty. Use as trend guidance, not exact prices.", icon="⚠️")
+st.warning("⚠️ Long-term forecasts carry higher uncertainty. Use as trend guidance, not exact prices.")
 
 # --- Create Tabs ---
 tab1, tab2 = st.tabs(["📈 Price Forecasting", "🤖 Ask AI for Analysis"])
@@ -45,7 +45,6 @@ tab1, tab2 = st.tabs(["📈 Price Forecasting", "🤖 Ask AI for Analysis"])
 with tab1:
     st.header("Select a Date to Forecast")
 
-    # --- Date selection restricted to 2023-2035 ---
     min_date = pd.Timestamp('2023-01-01')
     max_date = pd.Timestamp('2035-12-31')
 
@@ -61,12 +60,14 @@ with tab1:
 
     if future_date:
         st.subheader(f"🔮 Forecast for {future_date.strftime('%B %d, %Y')}")
-        
         col1, col2, col3 = st.columns(3)
+
         for price_type in ['Modal', 'Min', 'Max']:
             forecast_df = forecasts[price_type]
             selected_date = pd.to_datetime(future_date)
             prediction = forecast_df[forecast_df['ds'] == selected_date]
+
+            col = [col1, col2, col3][['Modal', 'Min', 'Max'].index(price_type)]
 
             if not prediction.empty:
                 predicted_price = prediction['yhat'].iloc[0]
@@ -74,14 +75,14 @@ with tab1:
                 upper_bound = prediction['yhat_upper'].iloc[0]
                 price_predictions[price_type] = predicted_price
 
-                with eval(f"col{['Modal', 'Min', 'Max'].index(price_type) + 1}"):
+                with col:
                     st.metric(
                         label=f"Predicted {price_type} Price (Rs./Quintal)",
                         value=f"₹{predicted_price:,.2f}",
                         help=f"Expected range: ₹{lower_bound:,.2f} to ₹{upper_bound:,.2f}"
                     )
             else:
-                 with eval(f"col{['Modal', 'Min', 'Max'].index(price_type) + 1}"):
+                with col:
                     st.warning(f"No prediction available for {price_type} price on this date.")
 
     st.divider()
@@ -132,10 +133,10 @@ Price Predictions (per Quintal):
 Instructions:
 1. Acknowledge long-term forecast uncertainty.
 2. Summarize the forecast.
-3. Explain the significance of price range.
+3. Explain the significance of the price range.
 4. Provide actionable advice for farmers/traders.
-5. Use simple language.
-6. Format using Markdown headings.
+5. Use simple, clear language.
+6. Format neatly using Markdown headings.
 """
                     response = client.chat.completions.create(
                         model="gpt-4-turbo-preview",
